@@ -19,16 +19,11 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.test.context.junit.jupiter.ApplicationEvents;
 import org.springframework.util.ReflectionUtils;
 
 /**
@@ -46,42 +41,8 @@ public class PublishedEventsParameterResolverUnitTests {
 		PublishedEventsParameterResolver resolver = new PublishedEventsParameterResolver(__ -> context);
 
 		assertThat(resolver.supportsParameter(getParameterContext(PublishedEvents.class), null)).isTrue();
+		assertThat(resolver.supportsParameter(getParameterContext(ApplicationEvents.class), null)).isTrue();
 		assertThat(resolver.supportsParameter(getParameterContext(Object.class), null)).isFalse();
-	}
-
-	@Test // #98
-	void createsThreadBoundPublishedEvents() throws Exception {
-
-		PublishedEventsParameterResolver resolver = new PublishedEventsParameterResolver(__ -> context);
-		context.refresh();
-
-		resolver.beforeAll(null);
-
-		Map<String, PublishedEvents> allEvents = new ConcurrentHashMap<>();
-		List<String> keys = Arrays.asList("first", "second", "third");
-		CountDownLatch latch = new CountDownLatch(3);
-
-		for (String it : keys) {
-
-			new Thread(() -> {
-
-				PublishedEvents events = resolver.resolveParameter(null, null);
-				context.publishEvent(it);
-				allEvents.put(it, events);
-
-				resolver.afterEach(null);
-
-				latch.countDown();
-
-			}).start();
-
-		}
-
-		latch.await(50, TimeUnit.MILLISECONDS);
-
-		keys.forEach(it -> {
-			assertThat(allEvents.get(it).ofType(String.class)).containsExactly(it);
-		});
 	}
 
 	private static ParameterContext getParameterContext(Class<?> type) {
@@ -97,6 +58,8 @@ public class PublishedEventsParameterResolverUnitTests {
 	interface Methods {
 
 		void with(PublishedEvents events);
+
+		void with(ApplicationEvents events);
 
 		void with(Object object);
 	}

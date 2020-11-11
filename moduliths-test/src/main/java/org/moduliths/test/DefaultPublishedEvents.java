@@ -17,7 +17,6 @@ package org.moduliths.test;
 
 import lombok.RequiredArgsConstructor;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -28,8 +27,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.springframework.context.ApplicationEvent;
-import org.springframework.context.ApplicationListener;
 import org.springframework.context.PayloadApplicationEvent;
+import org.springframework.test.context.junit.jupiter.ApplicationEvents;
 import org.springframework.util.Assert;
 
 /**
@@ -37,9 +36,9 @@ import org.springframework.util.Assert;
  *
  * @author Oliver Drotbohm
  */
-class DefaultPublishedEvents implements PublishedEvents, ApplicationListener<ApplicationEvent> {
+class DefaultPublishedEvents implements PublishedEvents {
 
-	private final List<Object> events;
+	private final ApplicationEvents delegate;
 
 	/**
 	 * Creates a new, empty {@link DefaultPublishedEvents} instance.
@@ -57,16 +56,7 @@ class DefaultPublishedEvents implements PublishedEvents, ApplicationListener<App
 
 		Assert.notNull(events, "Events must not be null!");
 
-		this.events = new ArrayList<>(events);
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * @see org.springframework.context.ApplicationListener#onApplicationEvent(org.springframework.context.ApplicationEvent)
-	 */
-	@Override
-	public void onApplicationEvent(ApplicationEvent event) {
-		this.events.add(unwrapPayloadEvent(event));
+		this.delegate = CollectionApplicationEvents.of(events);
 	}
 
 	/*
@@ -75,17 +65,46 @@ class DefaultPublishedEvents implements PublishedEvents, ApplicationListener<App
 	 */
 	@Override
 	public <T> TypedPublishedEvents<T> ofType(Class<T> type) {
-
-		return SimpleTypedPublishedEvents.of(events.stream()//
-				.filter(type::isInstance) //
-				.map(type::cast));
+		return SimpleTypedPublishedEvents.of(delegate.stream(type));
 	}
 
-	private static Object unwrapPayloadEvent(Object source) {
+	@RequiredArgsConstructor(staticName = "of")
+	private static class CollectionApplicationEvents implements ApplicationEvents {
 
-		return PayloadApplicationEvent.class.isInstance(source) //
-				? ((PayloadApplicationEvent<?>) source).getPayload() //
-				: source;
+		private final Collection<? extends Object> events;
+
+		/*
+		 * (non-Javadoc)
+		 * @see org.springframework.test.context.junit.jupiter.ApplicationEvents#stream()
+		 */
+		@Override
+		public Stream<ApplicationEvent> stream() {
+
+			return events.stream()
+					.map(it -> ApplicationEvent.class.isInstance(it) //
+							? ApplicationEvent.class.cast(it) //
+							: new PayloadApplicationEvent<>(this, it));
+		}
+
+		/*
+		 * (non-Javadoc)
+		 * @see org.springframework.test.context.junit.jupiter.ApplicationEvents#stream(java.lang.Class)
+		 */
+		@Override
+		public <T> Stream<T> stream(Class<T> type) {
+
+			return events.stream() //
+					.map(it -> unwrapPayloadEvent(it)) //
+					.filter(type::isInstance) //
+					.map(type::cast);
+		}
+
+		private static Object unwrapPayloadEvent(Object source) {
+
+			return PayloadApplicationEvent.class.isInstance(source) //
+					? ((PayloadApplicationEvent<?>) source).getPayload() //
+					: source;
+		}
 	}
 
 	@RequiredArgsConstructor(staticName = "of")
@@ -162,4 +181,5 @@ class DefaultPublishedEvents implements PublishedEvents, ApplicationListener<App
 			return events.toString();
 		}
 	}
+
 }
